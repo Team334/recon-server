@@ -3,7 +3,7 @@ from mongoengine import *
 
 import time, json, jsonpickle
 
-# Connect to "recon" MongoDB Database
+# Connect to recon MongoDB Database
 connect('recon')
 
 # MongoDB Collection + Sub-collections
@@ -42,7 +42,7 @@ class Teams(Document):
 # Class for sending refresh packets back to app
 class RefreshPacket:
     def __init__(self, data):
-        self.action = "refresh"
+        self.action = 'refresh'
         self.date = int(round(time.time() * 1000))
         self.data = data
 
@@ -54,28 +54,26 @@ class SubmitData:
 
 class Recon(WebSocket):
     def handleMessage(self):
-        print self.data
         data = json.loads(self.data)
 
         if data['action'] == 'refresh':
             last_update = 0
-            if data['last_update'] != "":
+            if data['last_update'] != '':
                 last_update = int(data['last_update'])
 
             l = []
             for ob in Matches.objects(date__gt=last_update):
-                l.append(SubmitData("new_match", ob.to_mongo().to_dict()))
+                l.append(SubmitData('new_match', ob.to_mongo().to_dict()))
 
             for ob in Teams.objects(date__gt=last_update):
-                l.append(SubmitData("new_team", ob.to_mongo().to_dict()))
+                l.append(SubmitData('new_team', ob.to_mongo().to_dict()))
 
             packet = RefreshPacket(l)
             raw = jsonpickle.encode(packet, unpicklable=False)
-            print raw
             self.sendMessage(unicode(raw))
 
         # Saves Websocket input from app into MongoDB
-        if data['action'] == "submit_team":
+        if data['action'] == 'submit_team':
             team = Teams(number = data['form']['number'])
             team.save()
 
@@ -91,7 +89,15 @@ class Recon(WebSocket):
             endgame = Endgame(climber = data['form']['end']['climber'], fouls = data['form']['end']['fouls'], score = data['form']['end']['score'])
             match.end = endgame
 
-            match.save()
+            # Checks if match has already been submitted and updates it to the new information
+            if Matches.objects(Q(match=data['form']['match']) & Q(team=data['form']['team'])):
+                for ob in Matches.objects(match=data['form']['match']):
+                    ob.update(set__date=time.time() * 1000)
+                    ob.update(set__auton=auton)
+                    ob.update(set__teleop=teleop)
+                    ob.update(set__end=endgame)
+            else:
+                match.save()
 
     def handleConnected(self):
         print self.address, 'connected'
