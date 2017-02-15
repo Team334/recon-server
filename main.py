@@ -25,7 +25,7 @@ class Endgame(EmbeddedDocument):
     score = IntField(required=True)
 
 class Matches(Document):
-    date = IntField(default=int(round(time.time() * 1000)))
+    date = IntField(default=int(time.time() * 1000))
     team = IntField(required=True, max_length=4)
     match = IntField(required=True, max_length=3)
     color = StringField(required=True)
@@ -36,14 +36,18 @@ class Matches(Document):
     end = EmbeddedDocumentField(Endgame)
 
 class Teams(Document):
-    date = IntField(default=int(round(time.time() * 1000)))
+    date = IntField(default=int(time.time() * 1000))
     number = IntField(require=True, max_length=4)
 
 # Class for sending refresh packets back to app
 class RefreshPacket:
     def __init__(self, data):
         self.action = 'refresh'
-        self.date = int(round(time.time() * 1000))
+        self.date = int(time.time() * 1000)
+        self.data = data
+class ConfirmationPacket:
+    def __init__(self, data):
+        self.action = 'received'
         self.data = data
 
 # Class for sending data back wrapped in action type
@@ -62,10 +66,10 @@ class Recon(WebSocket):
                 last_update = int(data['last_update'])
 
             l = []
-            for ob in Matches.objects(date__gt=last_update):
+            for ob in Matches.objects(date__gt = last_update):
                 l.append(SubmitData('new_match', ob.to_mongo().to_dict()))
 
-            for ob in Teams.objects(date__gt=last_update):
+            for ob in Teams.objects(date__gt = last_update):
                 l.append(SubmitData('new_team', ob.to_mongo().to_dict()))
 
             packet = RefreshPacket(l)
@@ -77,8 +81,13 @@ class Recon(WebSocket):
             team = Teams(number = data['form']['number'])
             team.save()
 
+            # Sends app confirmation that team was received by server
+            packet = ConfirmationPacket(SubmitData('team', {'team': data['form']['number'], 'date': (time.time() * 1000)}))
+            raw = jsonpickle.encode(packet, unpicklable=False)
+            self.sendMessage(unicode(raw))
+
         if data['action'] == 'submit_match':
-            match = Matches(team = data['form']['team'], color=data['form']['color'], match = data['form']['match'])
+            match = Matches(team = data['form']['team'], color = data['form']['color'], match = data['form']['match'])
 
             auton = Auton(passed_baseline = data['form']['auton']['passed_baseline'], placed_gear = data['form']['auton']['placed_gear'], shot_ball = data['form']['auton']['shot_ball'])
             match.auton = auton
@@ -90,14 +99,19 @@ class Recon(WebSocket):
             match.end = endgame
 
             # Checks if match has already been submitted and updates it to the new information
-            if Matches.objects(Q(match=data['form']['match']) & Q(team=data['form']['team'])):
-                for ob in Matches.objects(match=data['form']['match']):
-                    ob.update(set__date=time.time() * 1000)
-                    ob.update(set__auton=auton)
-                    ob.update(set__teleop=teleop)
-                    ob.update(set__end=endgame)
+            if Matches.objects(Q(match = data['form']['match']) & Q(team = data['form']['team'])):
+                for ob in Matches.objects(Q(match = data['form']['match']) & Q(team = data['form']['team'])):
+                    ob.update(set__date = time.time() * 1000)
+                    ob.update(set__auton = auton)
+                    ob.update(set__teleop = teleop)
+                    ob.update(set__end = endgame)
             else:
                 match.save()
+
+            # Sends app confirmation that match was received by server
+            packet = ConfirmationPacket(SubmitData('match', {'match': data['form']['match'], 'team': data['form']['team']}))
+            raw = jsonpickle.encode(packet, unpicklable=False)
+            self.sendMessage(unicode(raw))
 
     def handleConnected(self):
         print self.address, 'connected'
