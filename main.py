@@ -45,6 +45,7 @@ class RefreshPacket:
         self.action = 'refresh'
         self.date = int(time.time() * 1000)
         self.data = data
+
 class ConfirmationPacket:
     def __init__(self, data):
         self.action = 'received'
@@ -56,7 +57,17 @@ class SubmitData:
         self.action = action
         self.data = data
 
+clients = []
+
 class Recon(WebSocket):
+    def handleConnected(self):
+        clients.append(self)
+        print self.address, 'connected'
+
+    def handleClose(self):
+        clients.remove(self)
+        print self.address, 'disconnected'
+
     def handleMessage(self):
         data = json.loads(self.data)
 
@@ -98,6 +109,9 @@ class Recon(WebSocket):
             endgame = Endgame(climber = data['form']['end']['climber'], fouls = data['form']['end']['fouls'], score = data['form']['end']['score'])
             match.end = endgame
 
+            matchArray = []
+            matchArray.append(SubmitData('new_match', match.to_mongo().to_dict()))
+
             # Checks if match has already been submitted and updates it to the new information
             if Matches.objects(Q(match = data['form']['match']) & Q(team = data['form']['team'])):
                 for ob in Matches.objects(Q(match = data['form']['match']) & Q(team = data['form']['team'])):
@@ -109,15 +123,17 @@ class Recon(WebSocket):
                 match.save()
 
             # Sends app confirmation that match was received by server
-            packet = ConfirmationPacket(SubmitData('match', {'match': data['form']['match'], 'team': data['form']['team']}))
-            raw = jsonpickle.encode(packet, unpicklable=False)
-            self.sendMessage(unicode(raw))
+            cpacket = ConfirmationPacket(SubmitData('match', {'match': data['form']['match'], 'team': data['form']['team']}))
+            craw = jsonpickle.encode(cpacket, unpicklable=False)
+            self.sendMessage(unicode(craw))
 
-    def handleConnected(self):
-        print self.address, 'connected'
+            # Sends all clients new match received by server
+            rpacket = RefreshPacket(matchArray)
+            rraw = jsonpickle.encode(rpacket, unpicklable=False)
 
-    def handleClose(self):
-        print self.address, 'disconnected'
+            for c in clients:
+                if c != self:
+                    c.sendMessage(unicode(rraw))
 
 server = SimpleWebSocketServer('0.0.0.0', 8000, Recon)
 server.serveforever()
