@@ -57,6 +57,18 @@ class SubmitData:
         self.action = action
         self.data = data
 
+# Analyze Calculations
+class AnalyzePacket:
+    def __init__(self, action, team, opr, ccwm, avgpts, avggears, avghops, avgfouls):
+        self.action = action
+        self.team = team
+        self.opr = opr
+        self.ccwm = ccwm
+        self.avgpts = avgpts
+        self.avggears = avggears
+        self.avghops = avghops
+        self.avgfouls = avgfouls
+
 clients = []
 
 class Recon(WebSocket):
@@ -134,6 +146,35 @@ class Recon(WebSocket):
             for c in clients:
                 if c != self:
                     c.sendMessage(unicode(rraw))
+
+            # Calculates Analytical Data as Match is Submitted and sends it back to client
+            played, alliance, oppositeAlliance, points, gears, hoppers, fouls = [], [], [], [], [], [], []
+
+            for match in Matches.objects(team = data['form']['team']):
+                played.append(match)
+                alliance.append(match.end.score)
+                points.append(match.end.score)
+                gears.append(match.teleop.gears_on_ship)
+                hoppers.append(match.teleop.hoppers_activated)
+                fouls.append(match.end.fouls)
+
+                for ally in Matches.objects(Q(match = played[0].match) & Q(color = played[0].color) & Q(team__ne = played[0].team)):
+                    alliance.append(ally.end.score)
+
+                for opponent in Matches.objects(Q(match = played[0].match) & Q(color__ne = played[0].color)):
+                    oppositeAlliance.append(opponent.end.score)
+
+            opposite = sum(oppositeAlliance)
+            opr = sum(alliance)
+            ccwm = sum(alliance) - sum(oppositeAlliance)
+            avgpts = sum(points) / len(played)
+            avggears = sum(gears) / len(played)
+            avghops = sum(hoppers) / len(played)
+            avgfouls = sum(fouls) / len(played)
+
+            apacket = AnalyzePacket('new_analyze', data['team'], opr, ccwm, avgpts, avggears, avghops, avgfouls)
+            araw = jsonpickle.encode(apacket, unpicklable=False)
+            self.sendMessage(unicode(araw))
 
 server = SimpleWebSocketServer('0.0.0.0', 8000, Recon)
 server.serveforever()
