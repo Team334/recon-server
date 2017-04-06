@@ -81,6 +81,10 @@ def request_update(date):
 
     return docs
 
+def request_rankings():
+    rankings = Teams.objects().order_by("avg_points")
+    return rankings
+
 def request_analytics(team):
     t = Teams.objects(number=team).only(
         'opr', 'ccwm', 'avg_points', 'avg_gears', 'avg_hoppers', 'avg_fouls')

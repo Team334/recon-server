@@ -38,6 +38,14 @@ async def request_update(sid, data):
         raw = jsonpickle.encode(dic, unpicklable=False)
         await sio.emit(event, raw, room=sid)
 
+@sio.on('request_rankings')
+async def request_rankings(sid, data):
+    rankings = database.request_rankings()
+    arr = [team.number for team in rankings]
+
+    raw = jsonpickle.encode(arr, unpicklable=False)
+    return raw
+
 @sio.on('request_analytics')
 async def request_analytics(sid, data):
     analytics = database.request_analytics(data)
