@@ -16,13 +16,11 @@ def connect(sid, environ):
 @sio.on('submit_match')
 async def submit_match(sid, data):
     database.submit_match(data)
-
     await sio.emit('submit_match', data, room="scout", skip_sid=sid)
 
 @sio.on('submit_team')
 async def submit_team(sid, data):
     database.submit_team(data)
-
     await sio.emit('submit_team', data, room="scout", skip_sid=sid)
 
 @sio.on('request_update')
@@ -39,6 +37,15 @@ async def request_update(sid, data):
         dic.pop('_id')
         raw = jsonpickle.encode(dic, unpicklable=False)
         await sio.emit(event, raw, room=sid)
+
+@sio.on('request_analytics')
+async def request_analytics(sid, data):
+    analytics = database.request_analytics(data)
+    dic = analytics.to_mongo().to_dict()
+    dic.pop('_id')
+
+    raw = jsonpickle.encode(dic, unpicklable=False)
+    return raw 
 
 @sio.on('disconnect')
 def disconnect(sid):
