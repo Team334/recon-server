@@ -41,7 +41,10 @@ async def request_update(sid, data):
 @sio.on('request_rankings')
 async def request_rankings(sid, data):
     rankings = database.request_rankings()
-    arr = [team.number for team in rankings]
+    arr = [t.to_mongo().to_dict() for t in rankings]
+
+    for t in arr:
+        t.pop('_id')
 
     raw = jsonpickle.encode(arr, unpicklable=False)
     return raw
